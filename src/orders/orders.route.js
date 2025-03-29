@@ -45,8 +45,8 @@ router.post("/create-checkout-session", async (req, res) => {
             client_reference_id: Date.now().toString(), // معرف فريد للطلب
             mode: 'payment',
             products: lineItems,
-            success_url: "http://localhost:5173/success?session_id={CHECKOUT_SESSION_ID}",
-            cancel_url: "http://localhost:5173/cancel",
+            success_url: "https://genuine-front-rho.vercel.app/success?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url: "https://genuine-front-rho.vercel.app/cancel",
         };
 
         // إنشاء جلسة دفع عبر ثواني
