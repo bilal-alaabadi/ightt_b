@@ -31,7 +31,32 @@ app.use(
 
 // معالجة طلبات OPTIONS (Preflight)
 app.options('*', cors());
+// const express = require("express");
+// const cors = require("cors");
 
+// تكوين CORS شامل
+app.use(cors({
+  origin: [
+    "https://genuine-front-rho.vercel.app",
+    "https://genuine-backend.vercel.app",
+    "http://localhost:3000"
+  ],
+  methods: "GET,POST,PUT,DELETE,OPTIONS",
+  allowedHeaders: "Content-Type,Authorization,X-Requested-With",
+  credentials: true,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+}));
+
+// معالجة طلبات OPTIONS يدوياً
+app.options("*", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "https://genuine-front-rho.vercel.app");
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
+  res.status(204).send();
+});
+
+// باقي إعدادات الخادم...
 // middleware لتسجيل الطلبات
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.path}`);
