@@ -15,19 +15,13 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(
     cors({
-        origin:"https://genuine-front-one.vercel.app",
-        // origin: "https://www.royasow.store",//مال الفرونت اند
+        origin: ["https://genuine-front-one.vercel.app"],
         credentials: true,
     })
 );
 
 // دعم طلبات OPTIONS (Preflight Requests)
-app.options('*', (req, res) => {
-    res.header('Access-Control-Allow-Origin', 'https://genuine-front-one.vercel.app');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.send();
-})
+app.options('*', cors());
 
 // رفع الصور
 const uploadImage = require("./src/utils/uploadImage");
@@ -45,19 +39,14 @@ app.use("/api/reviews", reviewRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/stats", statsRoutes);
 
-
 // الاتصال بقاعدة البيانات
-main()
+mongoose.connect(process.env.DB_URL)
     .then(() => console.log("MongoDB is successfully connected."))
     .catch((err) => console.log(err));
 
-async function main() {
-    await mongoose.connect(process.env.DB_URL);
-
-    app.get("/", (req, res) => {
-        res.send("يعمل الان");
-    });
-}
+app.get("/", (req, res) => {
+    res.send("يعمل الان");
+});
 
 // رفع صورة واحدة
 app.post("/uploadImage", (req, res) => {
@@ -84,7 +73,5 @@ app.post("/uploadImages", async (req, res) => {
     }
 });
 
-// تشغيل الخادم
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-});
+// تعديل مهم لتشغيل الخادم على Vercel
+module.exports = app;
