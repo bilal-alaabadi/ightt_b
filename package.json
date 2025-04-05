@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "start:dev": "npx nodemon index.js",
-    "vercel-build": "npm install && npm run build"
-  },
+  "start": "node index.js",
+  "start:dev": "npx nodemon index.js",
+  "build": "echo \"No build step required for backend\"",
+  "vercel-build": "npm install && npm run build"
+}
+,
   "keywords": [],
   "author": "",
   "license": "ISC",
