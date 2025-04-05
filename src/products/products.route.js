@@ -8,40 +8,81 @@ const router = express.Router();
 // post a product
 const { uploadImages } = require("../utils/uploadImage");
 
-router.post("/uploadImages", async (req, res) => {
-    try {
-        const { images } = req.body; // images هي مصفوفة من base64
-        if (!images || !Array.isArray(images)) {
-            return res.status(400).send({ message: "يجب إرسال مصفوفة من الصور" });
-        }
+const validSizes = ['9.5', '9.75', '10', '10.25', '10.5', '10.75', '11', '11.25', '11.5', '11.75'];
 
-        const uploadedUrls = await uploadImages(images);
-        res.status(200).send(uploadedUrls);
-    } catch (error) {
-        console.error("Error uploading images:", error);
-        res.status(500).send({ message: "حدث خطأ أثناء تحميل الصور" });
-    }
+const validMassarTypes = {
+  smallPattern: ['مصار باشمينا صغيرة', 'مصار سوبر تورمة صغيرة', 'مصار نص تورمة صغيرة'],
+  largePattern: ['مصار باشمينا كبيرة', 'مصار سوبر تورمة كبيرة', 'مصار نص تورمة كبيرة']
+};
+
+router.post("/uploadImages", async (req, res) => {
+  try {
+      const { images } = req.body;
+      if (!images || !Array.isArray(images)) {
+          return res.status(400).send({ message: "يجب إرسال مصفوفة من الصور" });
+      }
+
+      const uploadedUrls = await uploadImages(images);
+      res.status(200).send(uploadedUrls);
+  } catch (error) {
+      console.error("Error uploading images:", error);
+      res.status(500).send({ message: "حدث خطأ أثناء تحميل الصور" });
+  }
 });
+
 
 // نقطة النهاية لإنشاء منتج
 router.post("/create-product", async (req, res) => {
   try {
-    const { name, category, description, price, oldPrice, image, color, author } = req.body;
+    const { name, category, subCategory, description, price, oldPrice, image, color, size, author } = req.body;
 
     // تحقق من الحقول المطلوبة
     if (!name || !category || !description || !price || !image || !author) {
       return res.status(400).send({ message: "جميع الحقول المطلوبة يجب إرسالها" });
     }
 
+    // تحقق من صحة السعر
+    const priceNum = parseFloat(price);
+    if (isNaN(priceNum)) {
+      return res.status(400).send({ message: "السعر يجب أن يكون رقماً" });
+    }
+
+    // تحقق من المقاس إذا كانت الفئة "كمه"
+    if (category === "كمه") {
+      if (!size) {
+        return res.status(400).send({ message: "حقل المقاس مطلوب لمنتجات كمه" });
+      }
+      if (!validSizes.includes(size)) {
+        return res.status(400).send({ message: "المقاس غير صالح" });
+      }
+    }
+
+    // تحقق من النوع الفرعي إذا كانت الفئة "مصار"
+    if (category === "مصار") {
+      if (!subCategory) {
+        return res.status(400).send({ message: "النوع الفرعي مطلوب لمنتجات المصار" });
+      }
+      
+      const isValidSubCategory = Object.values(validMassarTypes)
+        .flat()
+        .includes(subCategory);
+      
+      if (!isValidSubCategory) {
+        return res.status(400).send({ message: "النوع الفرعي غير صالح" });
+      }
+    }
+
     const newProduct = new Products({
       name,
       category,
+      ...(category === "مصار" && { subCategory }),
       description,
-      price,
-      oldPrice,
-      image, // يجب أن تكون مصفوفة من روابط الصور
+      price: priceNum,
+      oldPrice: oldPrice ? parseFloat(oldPrice) : undefined,
+      image,
       color,
-      author,
+      size: category === "كمه" ? size : undefined,
+      author
     });
 
     const savedProduct = await newProduct.save();
@@ -63,11 +104,14 @@ router.post("/create-product", async (req, res) => {
 });
 
 // get all products
+// في نقطة النهاية /get all products
 router.get("/", async (req, res) => {
   try {
     const {
       category,
+      subCategory,
       color,
+      size,
       minPrice,
       maxPrice,
       page = 1,
@@ -78,17 +122,22 @@ router.get("/", async (req, res) => {
 
     if (category && category !== "all") {
       filter.category = category;
-    }
-
-    if (color && color !== "all") {
-      filter.color = color;
-    }
-
-    if (minPrice && maxPrice) {
-      const min = parseFloat(minPrice);
-      const max = parseFloat(maxPrice);
-      if (!isNaN(min) && !isNaN(max)) {
-        filter.price = { $gte: min, $lte: max };
+      
+      // تطبيق فلترة النوع الفرعي إذا كانت الفئة "مصار"
+      if (category === "مصار" && subCategory) {
+        // فلترة حسب النقشة العامة أو النوع الفرعي
+        if (subCategory.includes('نقشة')) {
+          // إذا كانت فلترة عامة (مصار بالنقشة الصغيرة/الكبيرة)
+          filter.subCategory = { $regex: subCategory.includes('صغيرة') ? 'صغيرة' : 'كبيرة' };
+        } else {
+          // إذا كانت فلترة نوع فرعي محدد
+          filter.subCategory = subCategory;
+        }
+      }
+      
+      // تطبيق فلترة المقاسات فقط لمنتجات فئة "كمه"
+      if (category === "كمه" && size) {
+        filter.size = size;
       }
     }
 
@@ -135,9 +184,29 @@ router.get("/:id", async (req, res) => {
 router.patch("/update-product/:id", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const productId = req.params.id;
+    const { category, size, ...rest } = req.body;
+
+    const updateData = { ...rest };
+
+    if (category) {
+      updateData.category = category;
+      
+      if (category === "كمه") {
+        if (!size) {
+          return res.status(400).send({ message: "حقل المقاس مطلوب لمنتجات كمه" });
+        }
+        if (!validSizes.includes(size)) {
+          return res.status(400).send({ message: "المقاس غير صالح" });
+        }
+        updateData.size = size;
+      } else {
+        updateData.size = undefined;
+      }
+    }
+
     const updatedProduct = await Products.findByIdAndUpdate(
       productId,
-      { ...req.body },
+      updateData,
       { new: true }
     );
 
@@ -156,7 +225,6 @@ router.patch("/update-product/:id", verifyToken, verifyAdmin, async (req, res) =
 });
 
 // delete a product
-
 router.delete("/:id", async (req, res) => {
   try {
     const productId = req.params.id;
@@ -200,10 +268,10 @@ router.get("/related/:id", async (req, res) => {
     );
 
     const relatedProducts = await Products.find({
-      _id: { $ne: id }, // Exclude the current product
+      _id: { $ne: id },
       $or: [
-        { name: { $regex: titleRegex } }, // Match similar names
-        { category: product.category }, // Match the same category
+        { name: { $regex: titleRegex } },
+        { category: product.category },
       ],
     });
 

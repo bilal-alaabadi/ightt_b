@@ -4,11 +4,13 @@ const ProductSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     category: { type: String, required: true },
+    subCategory: { type: String }, // أضفنا حقل للنوع الفرعي
     description: { type: String, required: true },
     price: { type: Number, required: true },
     oldPrice: { type: Number },
-    image: { type: [String], required: true }, // تغيير إلى مصفوفة من النصوص
+    image: { type: [String], required: true },
     color: { type: String },
+    size: { type: String },
     rating: { type: Number, default: 0 },
     author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
   },
