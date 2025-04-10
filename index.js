@@ -16,7 +16,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(
     cors({
         origin:"https://genuine-f-delta.vercel.app",
-        // origin: "https://www.royasow.store",//مال الفرونت اند
+        // origin: "http://localhost:5173",//مال الفرونت اند
         credentials: true,
     })
 );
