@@ -4,14 +4,10 @@ const ProductSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     category: { type: String, required: true },
-    subCategory: { type: String }, // أضفنا حقل للنوع الفرعي
+    subCategory: { type: String }, // سيحتوي على "نوع-مقاس" للكمة مثل "كمه خياطة اليد-10.5"
     description: { type: String, required: true },
     price: { type: Number, required: true },
-    oldPrice: { type: Number },
     image: { type: [String], required: true },
-    color: { type: String },
-    size: { type: String },
-    rating: { type: Number, default: 0 },
     author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
   },
   { timestamps: true }

@@ -8,12 +8,13 @@ const router = express.Router();
 // post a product
 const { uploadImages } = require("../utils/uploadImage");
 
-const validSizes = ['9.5', '9.75', '10', '10.25', '10.5', '10.75', '11', '11.25', '11.5', '11.75'];
 
 const validMassarTypes = {
   smallPattern: ['مصار باشمينا صغيرة', 'مصار سوبر تورمة صغيرة', 'مصار نص تورمة صغيرة'],
   largePattern: ['مصار باشمينا كبيرة', 'مصار سوبر تورمة كبيرة', 'مصار نص تورمة كبيرة']
 };
+const validKumaTypes = ['كمه خياطة اليد', 'كمه ديواني'];
+const validKumaSizes = ['9.5', '9.75', '10', '10.25', '10.5', '10.75', '11', '11.25', '11.5', '11.75'];
 
 router.post("/uploadImages", async (req, res) => {
   try {
@@ -34,7 +35,7 @@ router.post("/uploadImages", async (req, res) => {
 // نقطة النهاية لإنشاء منتج
 router.post("/create-product", async (req, res) => {
   try {
-    const { name, category, subCategory, description, price, oldPrice, image, color, size, author } = req.body;
+    const { name, category, subCategory, description, price, image, author } = req.body;
 
     // تحقق من الحقول المطلوبة
     if (!name || !category || !description || !price || !image || !author) {
@@ -47,16 +48,29 @@ router.post("/create-product", async (req, res) => {
       return res.status(400).send({ message: "السعر يجب أن يكون رقماً" });
     }
 
-    // تحقق من المقاس إذا كانت الفئة "كمه"
+    // تحقق من النوع الفرعي إذا كانت الفئة "كمه"
     if (category === "كمه") {
-      if (!size) {
-        return res.status(400).send({ message: "حقل المقاس مطلوب لمنتجات كمه" });
+      if (!subCategory) {
+          return res.status(400).send({ message: "نوع الكمه مطلوب" });
       }
-      if (!validSizes.includes(size)) {
-        return res.status(400).send({ message: "المقاس غير صالح" });
+      
+      // تحقق مما إذا كان subCategory يحتوي على مقاس
+      const hasSize = validKumaSizes.some(size => subCategory.includes(size));
+      
+      if (hasSize) {
+          // إذا كان يحتوي على مقاس، نتحقق من النوع الأساسي
+          const baseType = subCategory.split('-')[0];
+          if (!validKumaTypes.includes(baseType)) {
+              return res.status(400).send({ message: "نوع الكمه غير صالح" });
+          }
+      } else {
+          // إذا لم يكن يحتوي على مقاس، نتحقق من النوع الأساسي فقط
+          if (!validKumaTypes.includes(subCategory)) {
+              return res.status(400).send({ message: "نوع الكمه غير صالح" });
+          }
       }
     }
-
+    
     // تحقق من النوع الفرعي إذا كانت الفئة "مصار"
     if (category === "مصار") {
       if (!subCategory) {
@@ -75,27 +89,14 @@ router.post("/create-product", async (req, res) => {
     const newProduct = new Products({
       name,
       category,
-      ...(category === "مصار" && { subCategory }),
+      ...(subCategory && { subCategory }),
       description,
       price: priceNum,
-      oldPrice: oldPrice ? parseFloat(oldPrice) : undefined,
       image,
-      color,
-      size: category === "كمه" ? size : undefined,
       author
     });
 
     const savedProduct = await newProduct.save();
-
-    // حساب التقييمات إذا وجدت
-    const reviews = await Reviews.find({ productId: savedProduct._id });
-    if (reviews.length > 0) {
-      const totalRating = reviews.reduce((acc, review) => acc + review.rating, 0);
-      const averageRating = totalRating / reviews.length;
-      savedProduct.rating = averageRating;
-      await savedProduct.save();
-    }
-
     res.status(201).send(savedProduct);
   } catch (error) {
     console.error("Error creating new product", error);
@@ -110,10 +111,6 @@ router.get("/", async (req, res) => {
     const {
       category,
       subCategory,
-      color,
-      size,
-      minPrice,
-      maxPrice,
       page = 1,
       limit = 10,
     } = req.query;
@@ -122,6 +119,21 @@ router.get("/", async (req, res) => {
 
     if (category && category !== "all") {
       filter.category = category;
+      
+      if (category === "كمه" && subCategory) {
+        // إذا كانت subCategory تحتوي على مقاس (مثل "كمه خياطة اليد-10.5")
+        if (subCategory.includes('-')) {
+          const [baseType, size] = subCategory.split('-');
+          if (validKumaTypes.includes(baseType) && validKumaSizes.includes(size)) {
+            filter.subCategory = { $regex: subCategory };
+          }
+        } else {
+          // إذا كانت subCategory لا تحتوي على مقاس
+          if (validKumaTypes.includes(subCategory)) {
+            filter.subCategory = { $regex: `^${subCategory}` };
+          }
+        }
+      }
       
       // تطبيق فلترة النوع الفرعي إذا كانت الفئة "مصار"
       if (category === "مصار" && subCategory) {
@@ -133,11 +145,6 @@ router.get("/", async (req, res) => {
           // إذا كانت فلترة نوع فرعي محدد
           filter.subCategory = subCategory;
         }
-      }
-      
-      // تطبيق فلترة المقاسات فقط لمنتجات فئة "كمه"
-      if (category === "كمه" && size) {
-        filter.size = size;
       }
     }
 
@@ -184,25 +191,33 @@ router.get("/:id", async (req, res) => {
 router.patch("/update-product/:id", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const productId = req.params.id;
-    const { category, size, ...rest } = req.body;
+    const { category, subCategory, ...rest } = req.body;
 
-    const updateData = { ...rest };
-
-    if (category) {
-      updateData.category = category;
-      
-      if (category === "كمه") {
-        if (!size) {
-          return res.status(400).send({ message: "حقل المقاس مطلوب لمنتجات كمه" });
+    if (category === "كمه" && subCategory) {
+      if (subCategory.includes('-')) {
+        const [baseType, size] = subCategory.split('-');
+        if (!validKumaTypes.includes(baseType) || !validKumaSizes.includes(size)) {
+          return res.status(400).send({ message: "نوع الكمه أو المقاس غير صالح" });
         }
-        if (!validSizes.includes(size)) {
-          return res.status(400).send({ message: "المقاس غير صالح" });
-        }
-        updateData.size = size;
-      } else {
-        updateData.size = undefined;
+      } else if (!validKumaTypes.includes(subCategory)) {
+        return res.status(400).send({ message: "نوع الكمه غير صالح" });
       }
     }
+
+    if (category === "مصار" && subCategory) {
+      const isValidSubCategory = Object.values(validMassarTypes)
+        .flat()
+        .includes(subCategory);
+      if (!isValidSubCategory) {
+        return res.status(400).send({ message: "النوع الفرعي غير صالح" });
+      }
+    }
+
+    const updateData = { 
+      ...rest,
+      ...(category && { category }),
+      ...(subCategory && { subCategory })
+    };
 
     const updatedProduct = await Products.findByIdAndUpdate(
       productId,
@@ -211,18 +226,19 @@ router.patch("/update-product/:id", verifyToken, verifyAdmin, async (req, res) =
     );
 
     if (!updatedProduct) {
-      return res.status(404).send({ message: "Product not found" });
+      return res.status(404).send({ message: "المنتج غير موجود" });
     }
 
     res.status(200).send({
-      message: "Product updated successfully",
+      message: "تم تحديث المنتج بنجاح",
       product: updatedProduct,
     });
   } catch (error) {
-    console.error("Error updating the product", error);
-    res.status(500).send({ message: "Failed to update the product" });
+    console.error("خطأ في تحديث المنتج", error);
+    res.status(500).send({ message: "فشل في تحديث المنتج" });
   }
 });
+
 
 // delete a product
 router.delete("/:id", async (req, res) => {
