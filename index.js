@@ -15,8 +15,8 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(
     cors({
-        origin:"https://genuine-f-delta.vercel.app",
-        // origin: "http://localhost:5173",//مال الفرونت اند
+        // origin:"https://genuine-f-delta.vercel.app",
+        origin: "http://localhost:5173",//مال الفرونت اند
         credentials: true,
     })
 );
