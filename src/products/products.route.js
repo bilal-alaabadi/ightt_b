@@ -26,11 +26,16 @@ router.post("/uploadImages", async (req, res) => {
 // إنشاء منتج جديد
 router.post("/create-product", async (req, res) => {
   try {
-    const { name, category, description, price, image, author } = req.body;
+    const { name, category, description, price, image, author, gender } = req.body;
 
     // التحقق من الحقول المطلوبة
     if (!name || !category || !description || !price || !image || !author) {
       return res.status(400).send({ message: "جميع الحقول المطلوبة يجب إرسالها" });
+    }
+
+    // التحقق من وجود حقل النوع إذا كانت الفئة نظارات أو ساعات
+    if ((category === 'نظارات' || category === 'ساعات') && !gender) {
+      return res.status(400).send({ message: "حقل النوع مطلوب لهذه الفئة" });
     }
 
     const newProduct = new Products({
@@ -40,6 +45,7 @@ router.post("/create-product", async (req, res) => {
       price,
       image, // يجب أن تكون مصفوفة من روابط الصور
       author,
+      gender: (category === 'نظارات' || category === 'ساعات') ? gender : undefined
     });
 
     const savedProduct = await newProduct.save();
@@ -65,14 +71,20 @@ router.get("/", async (req, res) => {
   try {
     const {
       category,
+      gender,
       page = 1,
       limit = 10,
     } = req.query;
 
     const filter = {};
 
-    if (category && category !== "all") {
+    if (category && category !== "الكل") {
       filter.category = category;
+    }
+
+    // إضافة فلتر النوع (gender) إذا كان موجودًا ولا يساوي "الكل"
+    if (gender && gender !== "الكل") {
+      filter.gender = gender;
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
