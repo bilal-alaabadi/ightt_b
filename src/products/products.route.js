@@ -26,7 +26,7 @@ router.post("/uploadImages", async (req, res) => {
 // إنشاء منتج جديد
 router.post("/create-product", async (req, res) => {
   try {
-    const { name, category, description, price, image, author, gender } = req.body;
+    const { name, category, description, price, oldPrice, image, author, gender } = req.body;
 
     // التحقق من الحقول المطلوبة
     if (!name || !category || !description || !price || !image || !author) {
@@ -43,6 +43,7 @@ router.post("/create-product", async (req, res) => {
       category,
       description,
       price,
+      oldPrice, // إضافة السعر القديم
       image, // يجب أن تكون مصفوفة من روابط الصور
       author,
       gender: (category === 'نظارات' || category === 'ساعات') ? gender : undefined
@@ -130,43 +131,51 @@ router.get("/:id", async (req, res) => {
 const multer = require('multer');
 const upload = multer();
 router.patch("/update-product/:id", 
-  verifyToken, 
-  verifyAdmin, 
-  upload.single('image'), // معالجة تحميل الصورة
-  async (req, res) => {
-    try {
-      const productId = req.params.id;
-      const updateData = {
-        ...req.body,
-        author: req.body.author
-      };
+    verifyToken, 
+    verifyAdmin, 
+    upload.single('image'),
+    async (req, res) => {
+        try {
+            const productId = req.params.id;
+            let updateData = {
+                name: req.body.name,
+                category: req.body.category,
+                price: req.body.price,
+                oldPrice: req.body.oldPrice || null, // تأكد من معالجة القيم الفارغة
+                description: req.body.description,
+                gender: req.body.gender || null,
+                author: req.body.author
+            };
 
-      if (req.file) {
-        updateData.image = [req.file.path]; // أو أي طريقة تخزين تستخدمها للصور
-      }
+            if (req.file) {
+                updateData.image = req.file.path;
+            }
 
-      const updatedProduct = await Products.findByIdAndUpdate(
-        productId,
-        { $set: updateData },
-        { new: true, runValidators: true }
-      );
+            // Debug: عرض البيانات الواردة
+            console.log('بيانات التحديث الواردة:', updateData);
 
-      if (!updatedProduct) {
-        return res.status(404).send({ message: "المنتج غير موجود" });
-      }
+            const updatedProduct = await Products.findByIdAndUpdate(
+                productId,
+                { $set: updateData },
+                { new: true, runValidators: true }
+            );
 
-      res.status(200).send({
-        message: "تم تحديث المنتج بنجاح",
-        product: updatedProduct,
-      });
-    } catch (error) {
-      console.error("Error updating the product", error);
-      res.status(500).send({ 
-        message: "فشل تحديث المنتج",
-        error: error.message
-      });
+            if (!updatedProduct) {
+                return res.status(404).send({ message: "المنتج غير موجود" });
+            }
+
+            res.status(200).send({
+                message: "تم تحديث المنتج بنجاح",
+                product: updatedProduct,
+            });
+        } catch (error) {
+            console.error("خطأ في تحديث المنتج", error);
+            res.status(500).send({ 
+                message: "فشل تحديث المنتج",
+                error: error.message
+            });
+        }
     }
-  }
 );
 
 // حذف المنتج

@@ -7,6 +7,7 @@ const ProductSchema = new mongoose.Schema(
     gender: { type: String }, // حقل جديد للنوع (اختياري)
     description: { type: String, required: true },
     price: { type: Number, required: true },
+    oldPrice: { type: Number }, // حقل السعر القديم (اختياري)
     image: { type: [String], required: true },
     rating: { type: Number, default: 0 },
     author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
