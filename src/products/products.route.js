@@ -26,10 +26,10 @@ router.post("/uploadImages", async (req, res) => {
 // إنشاء منتج جديد
 router.post("/create-product", async (req, res) => {
   try {
-    const { name, category, description, price, oldPrice, image, author, gender } = req.body;
+    const { name, category, description, price, oldPrice, image, author, gender, quantity } = req.body;
 
     // التحقق من الحقول المطلوبة
-    if (!name || !category || !description || !price || !image || !author) {
+    if (!name || !category || !description || !price || !image || !author || quantity === undefined) {
       return res.status(400).send({ message: "جميع الحقول المطلوبة يجب إرسالها" });
     }
 
@@ -43,8 +43,9 @@ router.post("/create-product", async (req, res) => {
       category,
       description,
       price,
-      oldPrice, // إضافة السعر القديم
-      image, // يجب أن تكون مصفوفة من روابط الصور
+      oldPrice,
+      quantity: Number(quantity),
+      image,
       author,
       gender: (category === 'نظارات' || category === 'ساعات') ? gender : undefined
     });
@@ -130,6 +131,7 @@ router.get("/:id", async (req, res) => {
 // تحديث المنتج
 const multer = require('multer');
 const upload = multer();
+
 router.patch("/update-product/:id", 
     verifyToken, 
     verifyAdmin, 
@@ -137,22 +139,40 @@ router.patch("/update-product/:id",
     async (req, res) => {
         try {
             const productId = req.params.id;
+            const isQuantityOnly = req.headers['x-quantity-only'] === 'true';
+            
             let updateData = {
                 name: req.body.name,
                 category: req.body.category,
                 price: req.body.price,
-                oldPrice: req.body.oldPrice || null, // تأكد من معالجة القيم الفارغة
+                oldPrice: req.body.oldPrice || null,
                 description: req.body.description,
                 gender: req.body.gender || null,
+                quantity: req.body.quantity !== undefined ? Number(req.body.quantity) : undefined,
                 author: req.body.author
             };
 
-            if (req.file) {
+            // إذا كان التحديث للكمية فقط، نتخطى التحقق من الحقول الأخرى
+            if (isQuantityOnly) {
+                updateData = { quantity: Number(req.body.quantity) };
+            } else {
+                // التحقق من الحقول المطلوبة للتحديث الكامل
+                if (!updateData.name || !updateData.category || !updateData.price || !updateData.description) {
+                    return res.status(400).send({ message: "جميع الحقول المطلوبة يجب إرسالها" });
+                }
+            }
+
+            // التحقق من صحة الكمية
+            if (updateData.quantity !== undefined && (isNaN(updateData.quantity) || updateData.quantity < 0)) {
+                return res.status(400).send({ message: "الكمية يجب أن تكون رقمًا موجبًا" });
+            }
+
+            if (!isQuantityOnly && req.file) {
                 updateData.image = req.file.path;
             }
 
-            // Debug: عرض البيانات الواردة
-            console.log('بيانات التحديث الواردة:', updateData);
+            // إزالة الحقول غير المعرفة
+            Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
 
             const updatedProduct = await Products.findByIdAndUpdate(
                 productId,
@@ -165,13 +185,13 @@ router.patch("/update-product/:id",
             }
 
             res.status(200).send({
-                message: "تم تحديث المنتج بنجاح",
+                message: isQuantityOnly ? "تم تحديث الكمية بنجاح" : "تم تحديث المنتج بنجاح",
                 product: updatedProduct,
             });
         } catch (error) {
             console.error("خطأ في تحديث المنتج", error);
             res.status(500).send({ 
-                message: "فشل تحديث المنتج",
+                message: isQuantityOnly ? "فشل تحديث الكمية" : "فشل تحديث المنتج",
                 error: error.message
             });
         }
