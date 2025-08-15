@@ -41,19 +41,26 @@ const updateProductQuantity = async (productId, quantity) => {
 
 
 router.post("/create-order", async (req, res) => {
-    const { products, email, customerName, customerPhone, wilayat, notes } = req.body;
+    const { products, email, customerName, customerPhone, wilayat, notes, isAdmin } = req.body;
     const shippingFee = 2; // رسوم الشحن الثابتة
 
     if (!Array.isArray(products) || products.length === 0) {
         return res.status(400).json({ error: "يجب إضافة منتجات للطلب" });
     }
 
-    // التحقق من البيانات المطلوبة
-    if (!customerName || !customerPhone || !wilayat || !email) {
-        return res.status(400).json({ error: "جميع الحقول المطلوبة يجب إرسالها" });
+    // التحقق من البيانات المطلوبة (تختلف حسب صلاحية المستخدم)
+    if (!isAdmin) {
+        if (!customerName || !customerPhone || !wilayat || !email) {
+            return res.status(400).json({ error: "جميع الحقول المطلوبة يجب إرسالها" });
+        }
+    } else {
+        if (!wilayat) {
+            return res.status(400).json({ error: "حقل الولاية مطلوب" });
+        }
     }
 
     try {
+        // بقية الكود يبقى كما هو...
         // التحقق من توفر الكميات أولاً
         for (const product of products) {
             const dbProduct = await Product.findById(product._id);
@@ -86,8 +93,8 @@ router.post("/create-order", async (req, res) => {
             })),
             amount: totalAmount,
             shippingFee,
-            customerName,
-            customerPhone,
+            customerName: isAdmin ? (customerName || "Admin Order") : customerName,
+            customerPhone: isAdmin ? (customerPhone || "00000000") : customerPhone,
             wilayat,
             email,
             paymentMethod: "cash", // الدفع عند الاستلام

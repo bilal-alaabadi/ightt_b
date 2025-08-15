@@ -8,6 +8,22 @@ const router = express.Router();
 // رفع الصور
 const { uploadImages } = require("../utils/uploadImage");
 
+
+router.get('/search', async (req, res) => {
+  try {
+    const { q } = req.query;
+    const products = await Products.find({
+      $or: [
+        { name: { $regex: q, $options: 'i' } },
+        { description: { $regex: q, $options: 'i' } }
+      ]
+    }).limit(20);
+    res.status(200).json(products);
+  } catch (error) {
+    res.status(500).json({ message: 'فشل البحث' });
+  }
+});
+
 router.post("/uploadImages", async (req, res) => {
     try {
         const { images } = req.body; // images هي مصفوفة من base64
@@ -219,6 +235,8 @@ router.delete("/:id", async (req, res) => {
     res.status(500).send({ message: "فشل حذف المنتج" });
   }
 });
+
+
 
 // الحصول على منتجات ذات صلة
 router.get("/related/:id", async (req, res) => {
