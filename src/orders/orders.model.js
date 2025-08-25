@@ -1,35 +1,39 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
+
+const OrderProductSchema = new mongoose.Schema(
+  {
+    productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+    name: String,
+    image: String,
+    price: { type: Number, required: true },          // سعر البيع وقت إنشاء الطلب (Snapshot)
+    originalPrice: { type: Number, default: 0 },      // السعر الأصلي وقت إنشاء الطلب (Snapshot)
+    quantity: { type: Number, required: true },
+    selectedSize: String,
+    selectedColor: String,
+  },
+  { _id: false }
+);
 
 const OrderSchema = new mongoose.Schema(
   {
-    orderId: { type: String, required: true, unique: true },
-    products: [
-      {
-        productId: { type: String, required: true },
-        quantity: { type: Number, required: true },
-        selectedSize: { type: String } // إضافة الحجم المحدد إذا كان منتج حناء بودر
-      },
-    ],
+    orderId: { type: String, unique: true, index: true },
+    products: { type: [OrderProductSchema], required: true },
     amount: { type: Number, required: true },
-    shippingFee: { type: Number, required: true, default: 2 },
-    customerName: { type: String, required: true },
-    customerPhone: { type: String, required: true },
-    wilayat: { type: String, required: true },
-    email: { type: String, required: true },
-    paymentMethod: { 
-      type: String, 
-      enum: ["cash", "online"], 
-      default: "cash" 
-    },
+    shippingFee: { type: Number, default: 0 },
+    discount: { type: Number, default: 0 },
+    customerName: String,
+    customerPhone: String,
+    wilayat: String,
+    email: String,
+    paymentMethod: { type: String, default: 'cash' },
+    notes: String,
     status: {
       type: String,
-      enum: ["pending", "processing", "shipped", "completed", "cancelled"],
-      default: "pending",
+      enum: ['pending', 'paid', 'shipped', 'completed', 'cancelled', 'refunded'],
+      default: 'pending',
     },
-    notes: { type: String } // ملاحظات إضافية
   },
   { timestamps: true }
 );
 
-const Order = mongoose.model("Order", OrderSchema);
-module.exports = Order;
+module.exports = mongoose.model('Order', OrderSchema);

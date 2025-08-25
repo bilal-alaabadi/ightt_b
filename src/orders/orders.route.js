@@ -41,86 +41,84 @@ const updateProductQuantity = async (productId, quantity) => {
 
 
 router.post("/create-order", async (req, res) => {
-    const { products, email, customerName, customerPhone, wilayat, notes, isAdmin } = req.body;
-    const shippingFee = 2; // رسوم الشحن الثابتة
+  const { products, email, customerName, customerPhone, wilayat, notes, isAdmin } = req.body;
 
-    if (!Array.isArray(products) || products.length === 0) {
-        return res.status(400).json({ error: "يجب إضافة منتجات للطلب" });
+  // مسجّل (admin/user) => 0، غير مسجّل => 2
+  const shippingFee = isAdmin ? 0 : 2;
+
+  if (!Array.isArray(products) || products.length === 0) {
+    return res.status(400).json({ error: "يجب إضافة منتجات للطلب" });
+  }
+
+  if (!isAdmin) {
+    if (!customerName || !customerPhone || !wilayat || !email) {
+      return res.status(400).json({ error: "جميع الحقول المطلوبة يجب إرسالها" });
+    }
+  } else {
+    if (!wilayat) {
+      return res.status(400).json({ error: "حقل الولاية مطلوب" });
+    }
+  }
+
+  try {
+    const snapshotProducts = [];
+
+    // التحقق من الكميات وتجهيز Snapshot للأسعار
+    for (const p of products) {
+      const dbProduct = await Product.findById(p._id).lean();
+      if (!dbProduct) {
+        return res.status(400).json({ error: `المنتج ${p.name || ''} غير موجود` });
+      }
+      if (dbProduct.quantity < p.quantity) {
+        return res.status(400).json({
+          error: `الكمية المطلوبة غير متوفرة للمنتج ${dbProduct.name} (المتبقي: ${dbProduct.quantity})`,
+        });
+      }
+
+      snapshotProducts.push({
+        productId: dbProduct._id,
+        name: dbProduct.name,
+        image: Array.isArray(dbProduct.image) ? dbProduct.image[0] : dbProduct.image,
+        price: Number(dbProduct.price) || 0,                // تثبيت سعر البيع
+        originalPrice: Number(dbProduct.originalPrice) || 0,// تثبيت السعر الأصلي
+        quantity: Number(p.quantity) || 0,
+        selectedSize: p.selectedSize || undefined,
+        selectedColor: p.selectedColor || undefined,
+      });
     }
 
-    // التحقق من البيانات المطلوبة (تختلف حسب صلاحية المستخدم)
-    if (!isAdmin) {
-        if (!customerName || !customerPhone || !wilayat || !email) {
-            return res.status(400).json({ error: "جميع الحقول المطلوبة يجب إرسالها" });
-        }
-    } else {
-        if (!wilayat) {
-            return res.status(400).json({ error: "حقل الولاية مطلوب" });
-        }
+    // الحساب من Snapshot فقط (وليس مما أرسله العميل)
+    const subtotal = snapshotProducts.reduce((t, it) => t + (it.price * it.quantity), 0);
+    const totalAmount = subtotal + shippingFee;
+
+    const orderId = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+    const order = new Order({
+      orderId,
+      products: snapshotProducts,
+      amount: totalAmount,
+      shippingFee,
+      customerName: isAdmin ? (customerName || "Admin Order") : customerName,
+      customerPhone: isAdmin ? (customerPhone || "00000000") : customerPhone,
+      wilayat,
+      email,
+      paymentMethod: "cash",
+      notes,
+      status: "pending",
+    });
+
+    await order.save();
+
+    // خصم الكميات
+    for (const p of products) {
+      await updateProductQuantity(p._id, p.quantity);
     }
 
-    try {
-        // بقية الكود يبقى كما هو...
-        // التحقق من توفر الكميات أولاً
-        for (const product of products) {
-            const dbProduct = await Product.findById(product._id);
-            if (!dbProduct) {
-                return res.status(400).json({ error: `المنتج ${product.name} غير موجود` });
-            }
-            if (dbProduct.quantity < product.quantity) {
-                return res.status(400).json({ 
-                    error: `الكمية المطلوبة غير متوفرة للمنتج ${product.name} (المتبقي: ${dbProduct.quantity})`
-                });
-            }
-        }
-
-        // حساب المبلغ الإجمالي مع رسوم الشحن
-        const subtotal = products.reduce((total, product) => {
-            return total + (product.price * product.quantity);
-        }, 0);
-        const totalAmount = subtotal + shippingFee;
-
-        // إنشاء رقم طلب فريد
-        const orderId = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
-        // حفظ الطلب في قاعدة البيانات
-        const order = new Order({
-            orderId,
-            products: products.map(product => ({
-                productId: product._id,
-                quantity: product.quantity,
-                selectedSize: product.selectedSize // حفظ الحجم المحدد إن وجد
-            })),
-            amount: totalAmount,
-            shippingFee,
-            customerName: isAdmin ? (customerName || "Admin Order") : customerName,
-            customerPhone: isAdmin ? (customerPhone || "00000000") : customerPhone,
-            wilayat,
-            email,
-            paymentMethod: "cash", // الدفع عند الاستلام
-            notes,
-            status: "pending"
-        });
-
-        await order.save();
-
-        // تحديث كميات المنتجات بعد حفظ الطلب بنجاح
-        for (const product of products) {
-            await updateProductQuantity(product._id, product.quantity);
-        }
-
-        res.status(201).json({ 
-            message: "تم إنشاء الطلب بنجاح",
-            order,
-            paymentMethod: "cash" 
-        });
-    } catch (error) {
-        console.error("Error creating order:", error);
-        res.status(500).json({ 
-            error: "فشل إنشاء الطلب", 
-            details: error.message 
-        });
-    }
+    res.status(201).json({ message: "تم إنشاء الطلب بنجاح", order, paymentMethod: "cash" });
+  } catch (error) {
+    console.error("Error creating order:", error);
+    res.status(500).json({ error: "فشل إنشاء الطلب", details: error.message });
+  }
 });
 
 router.post("/create-checkout-session", async (req, res) => {

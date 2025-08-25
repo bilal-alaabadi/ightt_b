@@ -6,9 +6,10 @@ const ProductSchema = new mongoose.Schema(
     category: { type: String, required: true },
     gender: { type: String },
     description: { type: String, required: true },
-    price: { type: Number, required: true },
-    oldPrice: { type: Number },
-    quantity: { type: Number, required: true, default: 0 }, // أضف هذا الحقل
+    price: { type: Number, required: true },          // السعر الحالي
+    oldPrice: { type: Number },                        // سعر قديم (اختياري)
+    originalPrice: { type: Number },                   // ← السعر الأصلي (جديد - اختياري)
+    quantity: { type: Number, required: true, default: 0 },
     image: { type: [String], required: true },
     rating: { type: Number, default: 0 },
     author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
