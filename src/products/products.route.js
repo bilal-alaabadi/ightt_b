@@ -40,6 +40,7 @@ router.post("/uploadImages", async (req, res) => {
 });
 
 // إنشاء منتج جديد
+// ========================= products.route.js (create-product) =========================
 router.post("/create-product", async (req, res) => {
   try {
     const {
@@ -48,7 +49,7 @@ router.post("/create-product", async (req, res) => {
       description,
       price,
       oldPrice,
-      originalPrice, // جديد
+      originalPrice,
       image,
       author,
       gender,
@@ -59,8 +60,8 @@ router.post("/create-product", async (req, res) => {
       return res.status(400).send({ message: "جميع الحقول المطلوبة يجب إرسالها" });
     }
 
-    // الفئات التي تتطلب النوع (أضيفت احذية)
-    const needGender = ['نظارات', 'ساعات', 'احذية'].includes(category);
+    // ✅ أضفنا "محافظ"
+    const needGender = ['نظارات', 'ساعات', 'احذية', 'محافظ'].includes(category);
     if (needGender && !gender) {
       return res.status(400).send({ message: "حقل النوع مطلوب لهذه الفئة" });
     }
@@ -94,6 +95,7 @@ router.post("/create-product", async (req, res) => {
     res.status(500).send({ message: "فشل إنشاء المنتج" });
   }
 });
+
 
 // الحصول على جميع المنتجات
 router.get("/", async (req, res) => {
@@ -156,6 +158,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // تحديث المنتج
+// ========================= products.route.js (PATCH /update-product/:id) =========================
 const multer = require('multer');
 const upload = multer();
 
@@ -199,8 +202,8 @@ router.patch(
           return res.status(400).send({ message: "جميع الحقول المطلوبة يجب إرسالها" });
         }
 
-        // الفئات التي تتطلب النوع (أضيفت احذية)
-        const needGender = ['نظارات', 'ساعات', 'احذية'].includes(updateData.category);
+        // ✅ أضفنا "محافظ" هنا
+        const needGender = ['نظارات', 'ساعات', 'احذية', 'محافظ'].includes(updateData.category);
         if (needGender && !updateData.gender) {
           return res.status(400).send({ message: "حقل النوع مطلوب لهذه الفئة" });
         }
@@ -220,7 +223,7 @@ router.patch(
       }
 
       if (!isQuantityOnly && req.file) {
-        updateData.image = req.file.path; // لو كان عندك مصفوفة صور غيّر هذا حسب بنية التخزين لديك
+        updateData.image = req.file.path; // حسب طريقة التخزين لديك
       }
 
       Object.keys(updateData).forEach((key) => updateData[key] === undefined && delete updateData[key]);
