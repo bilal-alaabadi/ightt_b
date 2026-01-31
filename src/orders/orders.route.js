@@ -1,9 +1,6 @@
-// orders.route.js
 const express = require("express");
 const cors = require("cors");
 const Order = require("./orders.model");
-const verifyToken = require("../middleware/verifyToken");
-const verifyAdmin = require("../middleware/verifyAdmin");
 const router = express.Router();
 const axios = require("axios");
 require("dotenv").config();
@@ -13,9 +10,8 @@ const THAWANI_API_KEY = process.env.THAWANI_API_KEY;
 const THAWANI_API_URL = process.env.THAWANI_API_URL;
 const publish_key = "HGvTMLDssJghr9tlN9gr4DVYt0qyBy";
 
-const app = express();
-app.use(cors({ origin: "http://localhost:5173" }));
-app.use(express.json());
+router.use(cors({ origin: "http://localhost:5173" }));
+router.use(express.json());
 
 // ---- Helpers ----
 const toNumber = (v) => {
@@ -50,59 +46,29 @@ const normalizeTailoring = (t) => {
 };
 
 const updateProductQuantity = async (productId, quantity) => {
-  try {
-    const product = await Product.findById(productId);
-    if (!product) {
-      throw new Error("المنتج غير موجود");
-    }
-    if (product.quantity < quantity) {
-      throw new Error("الكمية المطلوبة غير متوفرة");
-    }
-    product.quantity -= quantity;
-    await product.save();
-    return product;
-  } catch (error) {
-    console.error("Error updating product quantity:", error);
-    throw error;
-  }
+  const product = await Product.findById(productId);
+  if (!product) throw new Error("المنتج غير موجود");
+  if (product.quantity < quantity) throw new Error("الكمية المطلوبة غير متوفرة");
+
+  product.quantity -= quantity;
+  await product.save();
 };
-
-// استرجاع كميات المنتجات من سجل الطلب
-async function restoreQuantitiesFromOrder(order) {
-  if (!order || !Array.isArray(order.products)) return 0;
-
-  const ops = [];
-  for (const item of order.products) {
-    const pid =
-      item?.productId?._id ||   // populated
-      item?.productId ||        // ObjectId
-      item?.product?._id ||     // أحيانًا محفوظ كائن product
-      null;
-    const qty = Number(item?.quantity ?? item?.qty ?? 0);
-
-    if (!pid || !qty || qty <= 0) continue;
-
-    ops.push({
-      updateOne: {
-        filter: { _id: pid },
-        update: { $inc: { quantity: qty } },
-      },
-    });
-  }
-
-  if (ops.length > 0) {
-    await Product.bulkWrite(ops);
-  }
-  return ops.length;
-}
 
 // ---- Routes ----
 
-// إنشاء طلب (دفع نقدًا / من لوحة الإدارة)
+// ✅ إنشاء طلب (يعتمد amount القادم من الفرونت)
 router.post("/create-order", async (req, res) => {
-  const { products, email, customerName, customerPhone, wilayat, notes, isAdmin } = req.body;
-
-  const shippingFee = isAdmin ? 0 : 2;
+  const {
+    products,
+    email,
+    customerName,
+    customerPhone,
+    wilayat,
+    notes,
+    isAdmin,
+    amount,
+    shippingFee,
+  } = req.body;
 
   if (!Array.isArray(products) || products.length === 0) {
     return res.status(400).json({ error: "يجب إضافة منتجات للطلب" });
@@ -121,21 +87,18 @@ router.post("/create-order", async (req, res) => {
   try {
     const snapshotProducts = [];
 
-    // التحقق من الكميات وتجهيز Snapshot للأسعار + حفظ التفصيل
     for (const p of products) {
       const pid = getPid(p);
-      if (!pid) {
-        return res.status(400).json({ error: "معرّف المنتج مفقود" });
-      }
+      if (!pid) return res.status(400).json({ error: "معرّف المنتج مفقود" });
 
       const reqQty = toNumber(p.quantity);
       const dbProduct = await Product.findById(pid).lean();
       if (!dbProduct) {
-        return res.status(400).json({ error: `المنتج ${p.name || ""} غير موجود` });
+        return res.status(400).json({ error: `المنتج ${p.name} غير موجود` });
       }
       if (dbProduct.quantity < reqQty) {
         return res.status(400).json({
-          error: `الكمية المطلوبة غير متوفرة للمنتج ${dbProduct.name} (المتبقي: ${dbProduct.quantity})`,
+          error: `الكمية المطلوبة غير متوفرة للمنتج ${dbProduct.name}`,
         });
       }
 
@@ -143,27 +106,22 @@ router.post("/create-order", async (req, res) => {
         productId: dbProduct._id,
         name: dbProduct.name,
         image: Array.isArray(dbProduct.image) ? dbProduct.image[0] : dbProduct.image,
-        price: toNumber(p.price) || toNumber(dbProduct.price) || 0,
-        originalPrice: toNumber(p.originalPrice) || toNumber(dbProduct.originalPrice) || 0,
+        price: toNumber(p.price),
+        originalPrice: toNumber(p.originalPrice),
         quantity: reqQty,
-        selectedSize: p.selectedSize || undefined,
-        selectedColor: p.selectedColor || undefined,
+        selectedSize: p.selectedSize,
+        selectedColor: p.selectedColor,
         tailoring: normalizeTailoring(p.tailoring),
       });
     }
 
-    const subtotal = snapshotProducts.reduce((t, it) => t + it.price * it.quantity, 0);
-    const totalAmount = subtotal + shippingFee;
-
-    const orderId = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
     const order = new Order({
-      orderId,
+      orderId: `ORD-${Date.now()}`,
       products: snapshotProducts,
-      amount: totalAmount,
-      shippingFee,
-      customerName: isAdmin ? customerName || "Admin Order" : customerName,
-      customerPhone: isAdmin ? customerPhone || "00000000" : customerPhone,
+      amount: toNumber(amount), // ✅ المبلغ المعدّل
+      shippingFee: toNumber(shippingFee),
+      customerName,
+      customerPhone,
       wilayat,
       email,
       paymentMethod: "cash",
@@ -173,119 +131,13 @@ router.post("/create-order", async (req, res) => {
 
     await order.save();
 
-    // خصم الكميات
-    for (const p of products) {
-      const pid = getPid(p);
-      const qty = toNumber(p.quantity);
-      await updateProductQuantity(pid, qty);
-    }
-
-    res.status(201).json({ message: "تم إنشاء الطلب بنجاح", order, paymentMethod: "cash" });
-  } catch (error) {
-    console.error("Error creating order:", error);
-    res.status(500).json({ error: "فشل إنشاء الطلب", details: error.message });
-  }
-});
-
-// إنشاء جلسة دفع Thawani
-router.post("/create-checkout-session", async (req, res) => {
-  const { products, email, customerName, customerPhone, wilayat } = req.body;
-  const shippingFee = 2;
-
-  if (!Array.isArray(products) || products.length === 0) {
-    return res.status(400).json({ error: "Invalid or empty products array" });
-  }
-
-  try {
-    // التحقق من توفر الكميات أولاً
-    for (const p of products) {
-      const pid = getPid(p);
-      if (!pid) {
-        return res.status(400).json({ error: "معرّف المنتج مفقود" });
-      }
-      const dbProduct = await Product.findById(pid);
-      if (!dbProduct) {
-        return res.status(400).json({ error: `المنتج ${p.name} غير موجود` });
-      }
-      if (dbProduct.quantity < toNumber(p.quantity)) {
-        return res.status(400).json({
-          error: `الكمية المطلوبة غير متوفرة للمنتج ${p.name} (المتبقي: ${dbProduct.quantity})`,
-        });
-      }
-    }
-
-    const subtotal = products.reduce((total, p) => total + toNumber(p.price) * toNumber(p.quantity), 0);
-    const totalAmount = subtotal + shippingFee;
-
-    const lineItems = products.map((p) => ({
-      name: p.name,
-      productId: getPid(p),
-      quantity: toNumber(p.quantity),
-      unit_amount: Math.round(toNumber(p.price) * 1000),
-    }));
-
-    lineItems.push({
-      name: "رسوم الشحن",
-      quantity: 1,
-      unit_amount: Math.round(shippingFee * 1000),
-    });
-
-    const client_reference_id = Date.now().toString();
-    const data = {
-      client_reference_id,
-      mode: "payment",
-      products: lineItems,
-      success_url: `http://localhost:5173/success?client_reference_id=${client_reference_id}`,
-      cancel_url: "http://localhost:5173/cancel",
-    };
-
-    const response = await axios.post(`${THAWANI_API_URL}/checkout/session`, data, {
-      headers: {
-        "Content-Type": "application/json",
-        "thawani-api-key": THAWANI_API_KEY,
-      },
-    });
-
-    const sessionId = response.data.data.session_id;
-    const paymentLink = `https://uatcheckout.thawani.om/pay/${sessionId}?key=${publish_key}`;
-
-    // حفظ الطلب + حفظ التفصيل/القياسات
-    const order = new Order({
-      orderId: sessionId,
-      products: products.map((p) => ({
-        productId: getPid(p),
-        name: p.name,
-        image: Array.isArray(p.image) ? p.image[0] : p.image,
-        price: toNumber(p.price),
-        originalPrice: toNumber(p.originalPrice || p.oldPrice || 0),
-        quantity: toNumber(p.quantity),
-        selectedSize: p.selectedSize || undefined,
-        selectedColor: p.selectedColor || undefined,
-        tailoring: normalizeTailoring(p.tailoring),
-      })),
-      amount: totalAmount,
-      shippingFee,
-      customerName,
-      customerPhone,
-      wilayat,
-      email,
-      status: "pending",
-    });
-
-    await order.save();
-
-    // خصم الكميات
     for (const p of products) {
       await updateProductQuantity(getPid(p), toNumber(p.quantity));
     }
 
-    res.json({ id: sessionId, paymentLink });
+    res.status(201).json({ message: "تم إنشاء الطلب بنجاح", order });
   } catch (error) {
-    console.error("Error creating checkout session:", error);
-    res.status(500).json({
-      error: "Failed to create checkout session",
-      details: error.message,
-    });
+    res.status(500).json({ error: "فشل إنشاء الطلب", details: error.message });
   }
 });
 
