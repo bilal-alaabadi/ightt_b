@@ -14,8 +14,8 @@ app.use(cookieParser());
 
 // Enhanced CORS configuration
 const allowedOrigins = [
-  "https://www.lightoman.shop",
-  "https://lightoman.shop",
+  "https://www.lightoman.com",
+  "https://lightoman.com",
   "http://localhost:5173",
 ];
 
