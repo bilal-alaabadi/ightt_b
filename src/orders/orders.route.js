@@ -102,17 +102,22 @@ router.post("/create-order", async (req, res) => {
         });
       }
 
-      snapshotProducts.push({
-        productId: dbProduct._id,
-        name: dbProduct.name,
-        image: Array.isArray(dbProduct.image) ? dbProduct.image[0] : dbProduct.image,
-        price: toNumber(p.price),
-        originalPrice: toNumber(p.originalPrice),
-        quantity: reqQty,
-        selectedSize: p.selectedSize,
-        selectedColor: p.selectedColor,
-        tailoring: normalizeTailoring(p.tailoring),
-      });
+snapshotProducts.push({
+  productId: dbProduct._id,
+  name: dbProduct.name,
+  image: Array.isArray(dbProduct.image)
+    ? dbProduct.image[0]
+    : dbProduct.image,
+
+  // أخذ الأسعار من قاعدة البيانات وليس من الفرونت
+  price: toNumber(dbProduct.price),
+  originalPrice: toNumber(dbProduct.originalPrice),
+
+  quantity: reqQty,
+  selectedSize: p.selectedSize,
+  selectedColor: p.selectedColor,
+  tailoring: normalizeTailoring(p.tailoring),
+});
     }
 
     const order = new Order({
@@ -331,25 +336,24 @@ router.delete("/delete-order/:id", async (req, res) => {
     const { id } = req.params;
 
     const order = await Order.findById(id);
-    if (!order) {
-      return res.status(404).send({ message: "Order not found" });
-    }
 
-    if (order.status !== "cancelled") {
-      await restoreQuantitiesFromOrder(order);
+    if (!order) {
+      return res.status(404).json({
+        message: "Order not found",
+      });
     }
 
     await Order.findByIdAndDelete(id);
 
     return res.status(200).json({
-      message:
-        order.status === "cancelled"
-          ? "تم حذف الطلب (الكميات كانت مُستعادة مسبقًا)"
-          : "تم حذف الطلب وإرجاع الكميات للمخزون",
+      message: "تم حذف الطلب بنجاح",
     });
   } catch (error) {
-    console.error("Error deleting order", error);
-    res.status(500).send({ message: "Failed to delete order", error: error.message });
+    console.error("Error deleting order:", error);
+    return res.status(500).json({
+      message: "Failed to delete order",
+      error: error.message,
+    });
   }
 });
 
