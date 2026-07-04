@@ -343,10 +343,18 @@ router.delete("/delete-order/:id", async (req, res) => {
       });
     }
 
+    // رجّع الكمية للمخزون
+    for (const item of order.products) {
+      await Product.findByIdAndUpdate(item.productId, {
+        $inc: { quantity: item.quantity },
+      });
+    }
+
+    // حذف الطلب
     await Order.findByIdAndDelete(id);
 
     return res.status(200).json({
-      message: "تم حذف الطلب بنجاح",
+      message: "تم حذف الطلب وإرجاع الكمية بنجاح",
     });
   } catch (error) {
     console.error("Error deleting order:", error);
